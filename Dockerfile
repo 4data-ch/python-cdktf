@@ -51,9 +51,10 @@ RUN npm install --global cdktf-cli@${CDKTF_VERSION} \
 
 COPY --from=BUILDER /go/bin/terraform /usr/local/bin/terraform
 
-COPY src src
-
 WORKDIR /src
+
+COPY Pipfile.lock Pipfile.lock
+COPY Pipfile Pipfile
 
 RUN pipenv install
 
