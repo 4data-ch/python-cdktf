@@ -13,3 +13,6 @@ To build this image locally:
 docker build --tag <image:version> .
 ```
 
+#### License
+
+As this work is simply a packaging of Hashicorp's cdktf and terraform toolchains, it is subject to their license terms (see LICENSE file for details)
