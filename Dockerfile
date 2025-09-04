@@ -24,6 +24,8 @@ LABEL version=${CDKTF_VERSION}
 
 
 RUN apk add --no-cache \
+            jq \
+            yq \
 			npm \
 			curl \
 			git \
