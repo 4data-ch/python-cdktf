@@ -1,63 +1,63 @@
-FROM golang:1.25 AS BUILDER
-
-RUN git clone https://github.com/hashicorp/terraform.git \
-    && cd terraform \
-    && git fetch --all --tags --prune \
-    && git checkout tags/v1.13.1 -b FIX-CVE-2025-8959 \
-    && git config --global user.email "itops@4data.ch" \
-    && git config --global user.name "itops" \
-    && sed -i -e 's/go-getter v1.7.8/go-getter v1.7.9/g' go.mod \
-    && go mod tidy \
-	&& bash -c "export XC_ARCH=amd64; export XC_OS=linux; ./scripts/build.sh"
-
-FROM alpine:3.22.1
+FROM ubuntu:25.10
 
 ARG CDKTF_VERSION='0.21.0'
-ARG TF_VERSION='1.13.1'
+ARG TF_VERSION='1.12.2'
 ARG PYTHON_VERSION='3.12.2'
-ARG PYENV_HOME=/root/.pyenv
+ARG PYENV_HOME=/home/ubuntu/.pyenv
+ARG NPM_VERSION='11.6.0'
 
 LABEL author="4Data AG"
 LABEL maintainer="4Data AG"
 LABEL name="python-cdktf-cli"
-LABEL version=${CDKTF_VERSION}
 
 
-RUN apk add --no-cache \
-            jq \
-            yq \
-			npm \
-			curl \
-			git \
-			bash \
-		&& apk add --virtual temp_dep \
-			libffi-dev \
-			openssl-dev \
-			bzip2-dev \
-			zlib-dev \
-			readline-dev \
-			sqlite-dev \
-			build-base \
-			&& git clone --depth 1 https://github.com/pyenv/pyenv.git $PYENV_HOME && \
-					rm -rfv $PYENV_HOME/.git \
-			&& export PATH=$PYENV_HOME/shims:$PYENV_HOME/bin:$PATH \
-			&& pyenv install $PYTHON_VERSION \
-			&& pyenv global $PYTHON_VERSION \
-			&& pip install --upgrade pip && pyenv rehash \
-		&& apk del temp_dep
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --no-install-suggests jq yq curl git bash sudo zip unzip make ca-certificates \
+    && apt-get clean \
+    && apt-get remove --purge nodejs npm \
+    && curl -sL https://deb.nodesource.com/setup_22.x | sudo -E bash - \
+    && apt-get install -y --no-install-recommends --no-install-suggests nodejs
+
+
+RUN usermod -a -G root ubuntu \
+    && usermod -a -G sudo ubuntu \
+    && usermod -g root ubuntu \
+    && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+
+USER ubuntu
+
+WORKDIR /home/ubuntu
+
+RUN git clone https://github.com/pyenv/pyenv.git ~/.pyenv \
+    && export PYENV_ROOT="$HOME/.pyenv" \
+    && export PATH="$PYENV_ROOT/bin:$PATH" \
+    && sudo apt-get update \
+    && sudo apt-get install -y --no-install-recommends --no-install-suggests build-essential libssl-dev zlib1g-dev \
+        libbz2-dev libreadline-dev libsqlite3-dev \
+        libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev \
+    && sudo apt-get clean
 
 ENV PATH $PYENV_HOME/shims:$PYENV_HOME/bin:$PATH
 
-RUN npm install --global cdktf-cli@${CDKTF_VERSION} \
-	&& pip3 install --no-cache-dir -U pipenv
+RUN pyenv install $PYTHON_VERSION \
+		&& pyenv global $PYTHON_VERSION \
+		&& pip install --upgrade pip && pyenv rehash
 
-COPY --from=BUILDER /go/bin/terraform /usr/local/bin/terraform
+RUN curl -fsSL https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip -o /tmp/terraform.zip \
+  && unzip /tmp/terraform.zip -d /tmp \
+  && sudo mv /tmp/terraform /usr/local/bin/ \
+  && rm -rf /tmp/*
+
+RUN sudo npm install -g npm@${NPM_VERSION} \
+    && sudo npm install --global cdktf-cli@${CDKTF_VERSION} \
+	&& pip3 install --no-cache-dir -U pipenv \
+    && sudo deluser ubuntu sudo
 
 WORKDIR /src
 
-COPY Pipfile.lock Pipfile.lock
 COPY Pipfile Pipfile
+COPY Pipfile.lock Pipfile.lock
 
 RUN pipenv install
-
-CMD [ "cdktf" ]
